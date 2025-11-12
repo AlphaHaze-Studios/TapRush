@@ -33,17 +33,15 @@ class SoundManager {
             const arrayBuffer = await response.arrayBuffer();
             const audioBuffer = await this.audioContext!.decodeAudioData(arrayBuffer);
             this.buffers.set(name, audioBuffer);
-            console.log(`[Sound Manager] Loaded ${name} sound`);
           } catch (error) {
-            console.warn(`[Sound Manager] Failed to load ${name}:`, error);
+            
           }
         })
       );
 
       this.initialized = true;
-      console.log('[Sound Manager] Web Audio API initialized successfully');
     } catch (error) {
-      console.error('[Sound Manager] Failed to initialize Web Audio API:', error);
+      
     }
   }
 
@@ -57,7 +55,6 @@ class SoundManager {
     const buffer = this.buffers.get(baseSoundName);
     
     if (!buffer) {
-      console.warn(`[Sound Manager] Sound ${soundName} not loaded`);
       return;
     }
 
@@ -95,7 +92,7 @@ class SoundManager {
       
       source.start(0);
     } catch (error) {
-      console.error(`[Sound Manager] Error playing ${soundName}:`, error);
+      
     }
   }
 
@@ -108,9 +105,7 @@ class SoundManager {
   }
 
   setMasterVolume(volume: number) {
-    if (this.audioContext && this.audioContext.destination) {
-      console.log(`[Sound Manager] Master volume set to ${volume}`);
-    }
+    
   }
 
   resume() {

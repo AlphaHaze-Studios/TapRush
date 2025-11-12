@@ -8,6 +8,21 @@ The project is structured as a monorepo with shared schemas between client and s
 
 ## Recent Changes
 
+### Production-Ready for Play Store (November 2025)
+- **Removed all debug console.log statements** for production build
+- **Fixed database security** - Removed unused users table with plaintext passwords
+- **Optimized performance** - Score popups now use refs instead of state to prevent GC hitches
+- **Added Privacy Policy** - Complete privacy documentation for Play Store compliance
+- **Added Attribution** - Proper attribution for all fonts, assets, and libraries
+- **Ready for AdMob integration** - Ad manager structure in place for future monetization
+
+### Game Logic Fix (November 2025)
+- **Fixed Critical Gameplay Bug**: Adjusted shape spawn probability dynamically
+- Game now properly spawns a healthy mix of correct shapes (35%) and distractor shapes (65%)
+- Previously, rules like "TAP FRUITS ONLY" would spawn too many fruits, making game too easy
+- Previously, rules like "TAP GREEN ONLY" wouldn't spawn enough green shapes, making game impossible
+- Balance now creates proper challenge where players must selectively tap correct shapes
+
 ### Sound System Upgrade
 - Upgraded from HTMLAudio to Web Audio API for sound effects (pop, buzz, whoosh)
 - Created `soundManager` with proper audio buffer loading and playback

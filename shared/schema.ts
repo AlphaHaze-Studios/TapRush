@@ -2,12 +2,6 @@ import { pgTable, text, serial, integer, boolean, timestamp, varchar } from "dri
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
-export const users = pgTable("users", {
-  id: serial("id").primaryKey(),
-  username: text("username").notNull().unique(),
-  password: text("password").notNull(),
-});
-
 export const leaderboard = pgTable("leaderboard", {
   id: serial("id").primaryKey(),
   playerName: varchar("player_name", { length: 50 }).notNull(),
@@ -35,11 +29,6 @@ export const challengeCompletions = pgTable("challenge_completions", {
   combo: integer("combo").notNull(),
 });
 
-export const insertUserSchema = createInsertSchema(users).pick({
-  username: true,
-  password: true,
-});
-
 export const insertLeaderboardSchema = createInsertSchema(leaderboard).pick({
   playerName: true,
   score: true,
@@ -62,8 +51,6 @@ export const insertChallengeCompletionSchema = createInsertSchema(challengeCompl
   combo: true,
 });
 
-export type InsertUser = z.infer<typeof insertUserSchema>;
-export type User = typeof users.$inferSelect;
 export type Leaderboard = typeof leaderboard.$inferSelect;
 export type InsertLeaderboard = z.infer<typeof insertLeaderboardSchema>;
 export type DailyChallenge = typeof dailyChallenges.$inferSelect;

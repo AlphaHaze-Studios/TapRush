@@ -105,8 +105,6 @@ export function setActiveSkin(skinId: string): void {
 }
 
 export async function unlockSkinWithAd(skinId: string): Promise<boolean> {
-  console.log(`[Skin System] Unlocking skin: ${skinId}`);
-  
   return new Promise((resolve) => {
     showRewardedAd(() => {
       const skins = getSkins();
@@ -115,7 +113,6 @@ export async function unlockSkinWithAd(skinId: string): Promise<boolean> {
       if (skinIndex !== -1) {
         skins[skinIndex].unlocked = true;
         setLocalStorage('skins', skins);
-        console.log(`[Skin System] Skin ${skinId} unlocked!`);
         resolve(true);
       } else {
         resolve(false);

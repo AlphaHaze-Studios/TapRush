@@ -83,12 +83,15 @@ export default function TapRush() {
   const [doubleScoreTimer, setDoubleScoreTimer] = useState(0);
   const [gameMode, setGameMode] = useState<GameMode>('classic');
   const [showModeSelect, setShowModeSelect] = useState(false);
+  const [ruleProgress, setRuleProgress] = useState(0);
+  const [wrongTapShake, setWrongTapShake] = useState(false);
   
   const { isPaused, showCountdown, countdownValue, pause, resume, unpause } = usePause();
   
   const shapesRef = useRef<Shape[]>([]);
   const particlesRef = useRef<Particle[]>([]);
   const clickEffectsRef = useRef<ClickEffect[]>([]);
+  const scorePopupsRef = useRef<{id: number, x: number, y: number, points: number, life: number}[]>([]);
   const shapePoolSize = useRef(0);
   const particlePoolSize = useRef(0);
   const effectPoolSize = useRef(0);
@@ -114,8 +117,8 @@ export default function TapRush() {
     const savedHighScore = getLocalStorage('tapRushHighScore') || 0;
     setHighScore(savedHighScore);
     
-    soundManager.initialize().catch(error => {
-      console.error('[TapRush] Failed to initialize sound manager:', error);
+    soundManager.initialize().catch(() => {
+      
     });
 
     const handleResize = () => {
@@ -178,7 +181,12 @@ export default function TapRush() {
   }, [gameMode]);
 
   const getRuleAwareObjectAndColor = useCallback((): { type: ObjectType; color: ColorType; isMatch: boolean } => {
-    const MATCH_PROBABILITY = 0.75;
+    const elapsed = (Date.now() - gameStartTime.current) / 1000;
+    const EARLY_MATCH_PROB = 0.45;
+    const LATE_MATCH_PROB = 0.25;
+    const RAMP_TIME = 30;
+    const progress = Math.min(elapsed / RAMP_TIME, 1);
+    const MATCH_PROBABILITY = EARLY_MATCH_PROB - (EARLY_MATCH_PROB - LATE_MATCH_PROB) * progress;
     const shouldMatch = Math.random() < MATCH_PROBABILITY;
     const rule = currentRuleRef.current;
 
@@ -351,6 +359,8 @@ export default function TapRush() {
 
   const checkShapeMatch = useCallback((shape: Shape, rule: Rule): boolean => {
     if (rule.property === 'color') {
+      const config = getObjectConfig(shape.type);
+      if (config.category !== 'shapes') return false;
       return shape.color === rule.value;
     } else if (rule.property === 'object') {
       return shape.type === rule.value;
@@ -458,6 +468,14 @@ export default function TapRush() {
           
           setMaxCombo(max => Math.max(max, comboRef.current));
           
+          scorePopupsRef.current.push({
+            id: Date.now() + Math.random(),
+            x: shape.x,
+            y: shape.y,
+            points: points,
+            life: 1
+          });
+          
           const modeConfig = getGameModeConfig(gameMode);
           if (comboRef.current === modeConfig.comboForFrenzy) {
             frenzyModeRef.current = true;
@@ -483,6 +501,9 @@ export default function TapRush() {
           const modeConfig = getGameModeConfig(gameMode);
           soundManager.play('buzz', 0.5);
           vibrate([30, 100, 30, 100, 30]);
+          
+          setWrongTapShake(true);
+          setTimeout(() => setWrongTapShake(false), 400);
           
           if (modeConfig.penaltyEnabled) {
             setGameState('gameover');
@@ -621,7 +642,11 @@ export default function TapRush() {
         }
 
         const modeConfig = getGameModeConfig(gameMode);
-        if (now - ruleChangeTimer.current > modeConfig.ruleChangeInterval) {
+        const elapsed = now - ruleChangeTimer.current;
+        const progress = Math.min(elapsed / modeConfig.ruleChangeInterval, 1);
+        setRuleProgress(progress);
+        
+        if (elapsed > modeConfig.ruleChangeInterval) {
           setCurrentRule(generateRandomRule());
           ruleChangeTimer.current = now;
         }
@@ -640,6 +665,13 @@ export default function TapRush() {
           if (doubleScoreTimerRef.current <= 0) {
             doubleScoreActiveRef.current = false;
             doubleScoreTimerRef.current = 0;
+          }
+        }
+        
+        for (let i = scorePopupsRef.current.length - 1; i >= 0; i--) {
+          scorePopupsRef.current[i].life -= deltaTime * 1.5;
+          if (scorePopupsRef.current[i].life <= 0) {
+            scorePopupsRef.current.splice(i, 1);
           }
         }
         
@@ -798,15 +830,43 @@ export default function TapRush() {
       background: activeSkin.background,
       transition: 'background 0.5s ease-in-out',
     }}>
-      <canvas
-        ref={canvasRef}
-        onClick={handleCanvasClick}
-        style={{
-          display: 'block',
-          cursor: gameState === 'playing' ? 'pointer' : 'default',
-          touchAction: 'none',
-        }}
-      />
+      <div style={{
+        animation: wrongTapShake ? 'shake 0.4s ease-in-out' : 'none',
+        position: 'relative',
+      }}>
+        <canvas
+          ref={canvasRef}
+          onClick={handleCanvasClick}
+          style={{
+            display: 'block',
+            cursor: gameState === 'playing' ? 'pointer' : 'default',
+            touchAction: 'none',
+          }}
+        />
+        {wrongTapShake && (
+          <div style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: '100%',
+            height: '100%',
+            backgroundColor: 'rgba(255, 0, 0, 0.2)',
+            pointerEvents: 'none',
+            animation: 'fadeOut 0.4s ease-out',
+          }} />
+        )}
+      </div>
+      <style>{`
+        @keyframes shake {
+          0%, 100% { transform: translateX(0); }
+          10%, 30%, 50%, 70%, 90% { transform: translateX(-8px); }
+          20%, 40%, 60%, 80% { transform: translateX(8px); }
+        }
+        @keyframes fadeOut {
+          0% { opacity: 1; }
+          100% { opacity: 0; }
+        }
+      `}</style>
       
       {gameState === 'menu' && (
         <div style={{
@@ -1118,6 +1178,47 @@ export default function TapRush() {
         <>
           <div style={{
             position: 'absolute',
+            top: '50px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            textAlign: 'center',
+            zIndex: 20,
+            pointerEvents: 'none',
+          }}>
+            <div style={{
+              color: '#fff',
+              fontFamily: "'Orbitron', sans-serif",
+              fontSize: `clamp(1rem, ${scaleFactor * 1.4}rem, 1.8rem)`,
+              fontWeight: 'bold',
+              textShadow: `0 0 15px ${frenzyMode ? '#ff004d' : '#00fff7'}`,
+              backgroundColor: 'rgba(0, 0, 0, 0.6)',
+              padding: `${scaleFactor * 0.5}rem ${scaleFactor * 1}rem`,
+              borderRadius: '8px',
+              border: `2px solid ${frenzyMode ? '#ff004d' : '#00fff7'}`,
+              marginBottom: '0.5rem',
+            }}>
+              {currentRule.text}
+            </div>
+            <div style={{
+              width: '200px',
+              height: '6px',
+              backgroundColor: 'rgba(0, 0, 0, 0.5)',
+              borderRadius: '3px',
+              overflow: 'hidden',
+              border: '1px solid rgba(255, 255, 255, 0.3)',
+            }}>
+              <div style={{
+                width: `${ruleProgress * 100}%`,
+                height: '100%',
+                backgroundColor: '#00fff7',
+                transition: 'width 0.1s linear',
+                boxShadow: '0 0 10px #00fff7',
+              }} />
+            </div>
+          </div>
+          
+          <div style={{
+            position: 'absolute',
             top: '10px',
             left: '10px',
             color: '#fff',
@@ -1142,6 +1243,25 @@ export default function TapRush() {
               </div>
             )}
           </div>
+          
+          {scorePopupsRef.current.map(popup => (
+            <div key={popup.id} style={{
+              position: 'absolute',
+              left: popup.x,
+              top: popup.y - (1 - popup.life) * 50,
+              transform: 'translate(-50%, -50%)',
+              color: '#f5f500',
+              fontFamily: "'Orbitron', sans-serif",
+              fontSize: `clamp(1.2rem, ${scaleFactor * 1.8}rem, 2.4rem)`,
+              fontWeight: 'bold',
+              textShadow: '0 0 20px #f5f500',
+              opacity: popup.life,
+              pointerEvents: 'none',
+              zIndex: 100,
+            }}>
+              +{popup.points}
+            </div>
+          ))}
           
           <button
             onClick={pause}
