@@ -12,6 +12,7 @@ export interface Skin {
   id: string;
   name: string;
   colors: ColorScheme;
+  background: string;
   unlocked: boolean;
   adCost: number;
 }
@@ -26,6 +27,7 @@ export const DEFAULT_SKINS: Skin[] = [
       green: '#00ff85',
       yellow: '#f5f500',
     },
+    background: 'radial-gradient(circle at 20% 50%, rgba(0, 255, 247, 0.15) 0%, rgba(13, 13, 13, 1) 50%), radial-gradient(circle at 80% 80%, rgba(255, 0, 77, 0.15) 0%, rgba(13, 13, 13, 1) 50%), #0d0d0d',
     unlocked: true,
     adCost: 0,
   },
@@ -38,6 +40,7 @@ export const DEFAULT_SKINS: Skin[] = [
       green: '#ffd93d',
       yellow: '#ff9a9e',
     },
+    background: 'radial-gradient(circle at 20% 30%, rgba(255, 107, 107, 0.2) 0%, rgba(20, 15, 25, 1) 50%), radial-gradient(circle at 80% 70%, rgba(255, 211, 61, 0.2) 0%, rgba(20, 15, 25, 1) 50%), #140f19',
     unlocked: false,
     adCost: 1,
   },
@@ -50,6 +53,7 @@ export const DEFAULT_SKINS: Skin[] = [
       green: '#06ffa5',
       yellow: '#fffb7d',
     },
+    background: 'radial-gradient(circle at 30% 40%, rgba(0, 212, 255, 0.2) 0%, rgba(10, 15, 30, 1) 50%), radial-gradient(circle at 70% 60%, rgba(102, 126, 234, 0.2) 0%, rgba(10, 15, 30, 1) 50%), #0a0f1e',
     unlocked: false,
     adCost: 1,
   },
@@ -62,6 +66,7 @@ export const DEFAULT_SKINS: Skin[] = [
       green: '#ffcc00',
       yellow: '#ff9900',
     },
+    background: 'radial-gradient(circle at 25% 25%, rgba(255, 0, 0, 0.25) 0%, rgba(25, 5, 0, 1) 50%), radial-gradient(circle at 75% 75%, rgba(255, 102, 0, 0.25) 0%, rgba(25, 5, 0, 1) 50%), #190500',
     unlocked: false,
     adCost: 2,
   },
@@ -74,6 +79,7 @@ export const DEFAULT_SKINS: Skin[] = [
       green: '#01012b',
       yellow: '#d1f7ff',
     },
+    background: 'radial-gradient(circle at 20% 40%, rgba(255, 42, 109, 0.2) 0%, rgba(1, 1, 27, 1) 50%), radial-gradient(circle at 80% 60%, rgba(5, 217, 232, 0.2) 0%, rgba(1, 1, 27, 1) 50%), #01011b',
     unlocked: false,
     adCost: 2,
   },

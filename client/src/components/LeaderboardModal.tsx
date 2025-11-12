@@ -13,29 +13,51 @@ interface LeaderboardModalProps {
   isOpen: boolean;
   onClose: () => void;
   currentScore?: number;
+  currentCombo?: number;
 }
 
-export default function LeaderboardModal({ isOpen, onClose, currentScore }: LeaderboardModalProps) {
+export default function LeaderboardModal({ isOpen, onClose, currentScore, currentCombo = 0 }: LeaderboardModalProps) {
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [playerName, setPlayerName] = useState('');
   const [showNameInput, setShowNameInput] = useState(false);
+  const [scoreSubmitted, setScoreSubmitted] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
       loadLeaderboard();
-      if (currentScore && currentScore > 0) {
+      if (currentScore && currentScore > 0 && !scoreSubmitted) {
         setShowNameInput(true);
       }
+    } else {
+      setScoreSubmitted(false);
+      setShowNameInput(false);
+      setPlayerName('');
     }
-  }, [isOpen, currentScore]);
+  }, [isOpen, currentScore, scoreSubmitted]);
 
   const loadLeaderboard = () => {
-    const stored = getLocalStorage('leaderboard') || [];
-    const sorted = stored
-      .sort((a: any, b: any) => b.score - a.score)
-      .slice(0, 10)
-      .map((entry: any, index: number) => ({ ...entry, rank: index + 1 }));
-    setLeaderboard(sorted);
+    try {
+      const stored = getLocalStorage('leaderboard') || [];
+      const validEntries = stored.filter((entry: any) => 
+        entry && typeof entry.score === 'number' && entry.name
+      );
+      
+      const sorted = validEntries
+        .map((entry: any) => ({
+          ...entry,
+          combo: entry.combo || 0
+        }))
+        .sort((a: any, b: any) => {
+          if (b.score !== a.score) return b.score - a.score;
+          return b.combo - a.combo;
+        })
+        .slice(0, 10)
+        .map((entry: any, index: number) => ({ ...entry, rank: index + 1 }));
+      setLeaderboard(sorted);
+    } catch (error) {
+      console.error('Error loading leaderboard:', error);
+      setLeaderboard([]);
+    }
   };
 
   const submitScore = () => {
@@ -45,13 +67,14 @@ export default function LeaderboardModal({ isOpen, onClose, currentScore }: Lead
     const newEntry = {
       name: playerName.trim(),
       score: currentScore,
-      combo: 0,
+      combo: currentCombo || 0,
       date: new Date().toISOString(),
     };
     
     stored.push(newEntry);
     setLocalStorage('leaderboard', stored);
     
+    setScoreSubmitted(true);
     loadLeaderboard();
     setShowNameInput(false);
     setPlayerName('');
@@ -102,8 +125,11 @@ export default function LeaderboardModal({ isOpen, onClose, currentScore }: Lead
             marginBottom: '1rem',
             border: '2px solid #00ff85',
           }}>
-            <div style={{ color: '#00ff85', marginBottom: '0.5rem', fontSize: '0.9rem' }}>
-              Your Score: {currentScore}
+            <div style={{ color: '#00fff7', marginBottom: '0.3rem', fontSize: '1rem', fontWeight: 'bold' }}>
+              Score: {currentScore}
+            </div>
+            <div style={{ color: '#f5f500', marginBottom: '0.5rem', fontSize: '0.9rem' }}>
+              Max Combo: {currentCombo}
             </div>
             <input
               type="text"
@@ -165,32 +191,60 @@ export default function LeaderboardModal({ isOpen, onClose, currentScore }: Lead
                 style={{
                   display: 'flex',
                   alignItems: 'center',
-                  padding: '1rem',
+                  justifyContent: 'space-between',
+                  padding: 'clamp(0.6rem, 1rem, 1.2rem)',
                   borderBottom: entry.rank < leaderboard.length ? '1px solid #333' : 'none',
                   backgroundColor: entry.rank <= 3 ? 'rgba(245, 245, 0, 0.1)' : 'transparent',
+                  flexWrap: 'wrap',
+                  gap: '0.5rem',
                 }}
               >
                 <div style={{
-                  width: '40px',
-                  fontSize: '1.2rem',
-                  fontWeight: 'bold',
-                  color: entry.rank === 1 ? '#FFD700' : entry.rank === 2 ? '#C0C0C0' : entry.rank === 3 ? '#CD7F32' : '#888',
+                  display: 'flex',
+                  alignItems: 'center',
+                  flex: '1 1 auto',
+                  minWidth: '150px',
                 }}>
-                  #{entry.rank}
+                  <div style={{
+                    width: 'clamp(30px, 40px, 50px)',
+                    fontSize: 'clamp(1rem, 1.2rem, 1.4rem)',
+                    fontWeight: 'bold',
+                    color: entry.rank === 1 ? '#FFD700' : entry.rank === 2 ? '#C0C0C0' : entry.rank === 3 ? '#CD7F32' : '#888',
+                  }}>
+                    #{entry.rank}
+                  </div>
+                  <div style={{
+                    flex: 1,
+                    color: '#fff',
+                    fontSize: 'clamp(0.9rem, 1rem, 1.1rem)',
+                  }}>
+                    {entry.name}
+                  </div>
                 </div>
                 <div style={{
-                  flex: 1,
-                  color: '#fff',
-                  fontSize: '1rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '1rem',
                 }}>
-                  {entry.name}
-                </div>
-                <div style={{
-                  fontSize: '1.2rem',
-                  fontWeight: 'bold',
-                  color: '#00fff7',
-                }}>
-                  {entry.score}
+                  <div style={{
+                    textAlign: 'right',
+                  }}>
+                    <div style={{
+                      fontSize: 'clamp(1rem, 1.2rem, 1.4rem)',
+                      fontWeight: 'bold',
+                      color: '#00fff7',
+                    }}>
+                      {entry.score}
+                    </div>
+                    {entry.combo > 0 && (
+                      <div style={{
+                        fontSize: 'clamp(0.7rem, 0.8rem, 0.9rem)',
+                        color: '#f5f500',
+                      }}>
+                        ×{entry.combo}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             ))

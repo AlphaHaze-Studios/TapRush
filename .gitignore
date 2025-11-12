@@ -29,8 +29,6 @@ android/app/src/main/res/mipmap-*/
 
 # Local settings
 .local/
-.replit
-replit
 .npmrc
 
 # Icon / Splash generated files (cordova-res output)
