@@ -47,7 +47,7 @@ class SoundManager {
     }
   }
 
-  play(soundName: SoundName, volume: number = 0.3) {
+  play(soundName: SoundName, volume: number = 0.3, pitchVariation: number = 0) {
     if (!this.audioContext || !this.initialized || this.isMuted) {
       return;
     }
@@ -71,6 +71,24 @@ class SoundManager {
       
       source.buffer = buffer;
       gainNode.gain.value = volume;
+      
+      const pitchMap: Record<SoundName, number> = {
+        pop: 1.0,
+        buzz: 0.8,
+        whoosh: 1.2,
+        crunch: 0.85,
+        splash: 1.15,
+        squish: 0.95,
+        laugh: 1.3,
+        cry: 0.75,
+        grunt: 0.7,
+        yeah: 1.25,
+        kiss: 1.1,
+        sparkle: 1.4,
+      };
+      
+      const basePitch = pitchMap[soundName] || 1.0;
+      source.playbackRate.value = basePitch + pitchVariation;
       
       source.connect(gainNode);
       gainNode.connect(this.audioContext.destination);

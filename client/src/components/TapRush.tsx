@@ -99,6 +99,7 @@ export default function TapRush() {
   const frenzyTimerRef = useRef(0);
   const doubleScoreActiveRef = useRef(false);
   const doubleScoreTimerRef = useRef(0);
+  const currentRuleRef = useRef<Rule | null>(null);
   
   const nextShapeId = useRef(0);
   const lastSpawnTime = useRef(0);
@@ -124,6 +125,10 @@ export default function TapRush() {
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
+
+  useEffect(() => {
+    currentRuleRef.current = currentRule;
+  }, [currentRule]);
 
   const generateRandomRule = useCallback((): Rule => {
     const rand = Math.random();
@@ -172,18 +177,109 @@ export default function TapRush() {
     return { spawnRate, speedMultiplier, maxShapes };
   }, [gameMode]);
 
+  const getRuleAwareObjectAndColor = useCallback((): { type: ObjectType; color: ColorType; isMatch: boolean } => {
+    const MATCH_PROBABILITY = 0.75;
+    const shouldMatch = Math.random() < MATCH_PROBABILITY;
+    const rule = currentRuleRef.current;
+
+    if (!rule) {
+      return {
+        type: getRandomObjectType(),
+        color: COLOR_TYPES[Math.floor(Math.random() * COLOR_TYPES.length)],
+        isMatch: false,
+      };
+    }
+
+    if (rule.property === 'color') {
+      const matchingColor = rule.value as ColorType;
+      const nonMatchingColors = COLOR_TYPES.filter(c => c !== matchingColor);
+      
+      if (shouldMatch) {
+        return {
+          type: getRandomObjectType(),
+          color: matchingColor,
+          isMatch: true,
+        };
+      } else {
+        return {
+          type: getRandomObjectType(),
+          color: nonMatchingColors[Math.floor(Math.random() * nonMatchingColors.length)],
+          isMatch: false,
+        };
+      }
+    } else if (rule.property === 'category') {
+      const category = rule.value as ObjectCategory;
+      const allCategories: ObjectCategory[] = ['shapes', 'fruits', 'emojis'];
+      const otherCategories = allCategories.filter(c => c !== category);
+      
+      if (shouldMatch) {
+        return {
+          type: getRandomObjectType(category),
+          color: COLOR_TYPES[Math.floor(Math.random() * COLOR_TYPES.length)],
+          isMatch: true,
+        };
+      } else {
+        const distractorCategory = otherCategories[Math.floor(Math.random() * otherCategories.length)];
+        return {
+          type: getRandomObjectType(distractorCategory),
+          color: COLOR_TYPES[Math.floor(Math.random() * COLOR_TYPES.length)],
+          isMatch: false,
+        };
+      }
+    } else if (rule.property === 'object') {
+      const matchingType = rule.value as ObjectType;
+      const config = getObjectConfig(matchingType);
+      const category = config.category;
+      
+      const categoryTypes = category === 'shapes' ? SHAPE_TYPES :
+                           category === 'fruits' ? FRUIT_TYPES :
+                           EMOJI_TYPES;
+      const otherTypes = (categoryTypes as readonly ObjectType[]).filter(t => t !== matchingType);
+      
+      if (shouldMatch) {
+        return {
+          type: matchingType,
+          color: COLOR_TYPES[Math.floor(Math.random() * COLOR_TYPES.length)],
+          isMatch: true,
+        };
+      } else {
+        if (otherTypes.length === 0) {
+          const allCategories: ObjectCategory[] = ['shapes', 'fruits', 'emojis'];
+          const otherCategories = allCategories.filter(c => c !== category);
+          const distractorCategory = otherCategories[Math.floor(Math.random() * otherCategories.length)];
+          return {
+            type: getRandomObjectType(distractorCategory),
+            color: COLOR_TYPES[Math.floor(Math.random() * COLOR_TYPES.length)],
+            isMatch: false,
+          };
+        }
+        return {
+          type: otherTypes[Math.floor(Math.random() * otherTypes.length)],
+          color: COLOR_TYPES[Math.floor(Math.random() * COLOR_TYPES.length)],
+          isMatch: false,
+        };
+      }
+    }
+
+    return {
+      type: getRandomObjectType(),
+      color: COLOR_TYPES[Math.floor(Math.random() * COLOR_TYPES.length)],
+      isMatch: false,
+    };
+  }, []);
+
   const spawnShape = useCallback((canvas: HTMLCanvasElement, speedMultiplier: number = 1) => {
     const dpr = window.devicePixelRatio || 1;
     const displayWidth = canvas.width / dpr;
     const displayHeight = canvas.height / dpr;
     
     const baseSize = 40 * scaleFactor;
-    const objectType = getRandomObjectType();
+    const { type: objectType, color: objectColor } = getRuleAwareObjectAndColor();
     
     const newShape = {
       id: nextShapeId.current++,
       type: objectType,
-      color: COLOR_TYPES[Math.floor(Math.random() * COLOR_TYPES.length)],
+      color: objectColor,
       x: Math.random() * (displayWidth - baseSize * 2) + baseSize,
       y: -baseSize * 2,
       speed: (1.5 + Math.random() * 1.5) * speedMultiplier,
@@ -197,7 +293,7 @@ export default function TapRush() {
       shapesRef.current.push(newShape);
     }
     shapePoolSize.current++;
-  }, [scaleFactor]);
+  }, [scaleFactor, getRuleAwareObjectAndColor]);
 
   const createParticles = useCallback((x: number, y: number, color: string) => {
     const maxParticles = 200;
@@ -379,7 +475,9 @@ export default function TapRush() {
           }
           
           const config = getObjectConfig(shape.type);
-          soundManager.play(config.sound as any, 0.4);
+          const comboVolume = Math.min(0.3 + (comboRef.current * 0.01), 0.6);
+          const pitchVar = (Math.random() - 0.5) * 0.1;
+          soundManager.play(config.sound as any, comboVolume, pitchVar);
           vibrate(15);
         } else {
           const modeConfig = getGameModeConfig(gameMode);
@@ -576,7 +674,7 @@ export default function TapRush() {
           const particle = particlesRef.current[i];
           particle.x += particle.vx;
           particle.y += particle.vy;
-          particle.life -= deltaTime * 2;
+          particle.life -= deltaTime * 1.5;
           
           if (particle.life <= 0) {
             particlePoolSize.current--;
@@ -588,17 +686,16 @@ export default function TapRush() {
             }
           } else {
             ctx.fillStyle = particle.color;
-            ctx.globalAlpha = particle.life;
+            ctx.globalAlpha = Math.pow(particle.life, 0.7);
             ctx.fillRect(particle.x - particle.size / 2, particle.y - particle.size / 2, particle.size, particle.size);
             ctx.globalAlpha = 1;
           }
         }
 
-        // Click effects
         for (let i = 0; i < effectPoolSize.current; i++) {
           const effect = clickEffectsRef.current[i];
-          effect.life -= deltaTime * 2;
-          effect.scale += deltaTime * 2;
+          effect.life -= deltaTime * 1.5;
+          effect.scale += deltaTime * 1.8;
           
           if (effect.life <= 0) {
             effectPoolSize.current--;
@@ -611,7 +708,7 @@ export default function TapRush() {
           } else {
             ctx.strokeStyle = effect.color;
             ctx.lineWidth = 3 * scaleFactor;
-            ctx.globalAlpha = effect.life;
+            ctx.globalAlpha = Math.pow(effect.life, 0.8);
             ctx.beginPath();
             ctx.arc(effect.x, effect.y, 20 * effect.scale * scaleFactor, 0, Math.PI * 2);
             ctx.stroke();
@@ -625,10 +722,45 @@ export default function TapRush() {
         
         for (let i = 0; i < particlePoolSize.current; i++) {
           const particle = particlesRef.current[i];
-          ctx.fillStyle = particle.color;
-          ctx.globalAlpha = particle.life;
-          ctx.fillRect(particle.x - particle.size / 2, particle.y - particle.size / 2, particle.size, particle.size);
-          ctx.globalAlpha = 1;
+          particle.life -= deltaTime * 1.5;
+          
+          if (particle.life <= 0) {
+            particlePoolSize.current--;
+            if (i < particlePoolSize.current) {
+              const temp = particlesRef.current[i];
+              particlesRef.current[i] = particlesRef.current[particlePoolSize.current];
+              particlesRef.current[particlePoolSize.current] = temp;
+              i--;
+            }
+          } else {
+            ctx.fillStyle = particle.color;
+            ctx.globalAlpha = Math.pow(particle.life, 0.7);
+            ctx.fillRect(particle.x - particle.size / 2, particle.y - particle.size / 2, particle.size, particle.size);
+            ctx.globalAlpha = 1;
+          }
+        }
+        
+        for (let i = 0; i < effectPoolSize.current; i++) {
+          const effect = clickEffectsRef.current[i];
+          effect.life -= deltaTime * 1.5;
+          
+          if (effect.life <= 0) {
+            effectPoolSize.current--;
+            if (i < effectPoolSize.current) {
+              const temp = clickEffectsRef.current[i];
+              clickEffectsRef.current[i] = clickEffectsRef.current[effectPoolSize.current];
+              clickEffectsRef.current[effectPoolSize.current] = temp;
+              i--;
+            }
+          } else {
+            ctx.strokeStyle = effect.color;
+            ctx.lineWidth = 3 * scaleFactor;
+            ctx.globalAlpha = Math.pow(effect.life, 0.8);
+            ctx.beginPath();
+            ctx.arc(effect.x, effect.y, 20 * effect.scale * scaleFactor, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.globalAlpha = 1;
+          }
         }
       }
 
@@ -685,59 +817,79 @@ export default function TapRush() {
           textAlign: 'center',
           color: '#fff',
           fontFamily: "'Orbitron', sans-serif",
-          width: '90%',
-          maxWidth: '600px',
+          width: '92%',
+          maxWidth: '500px',
+          padding: '1.5rem',
         }}>
           <h1 style={{
             ...titleStyle,
-            marginBottom: '2rem',
-            textShadow: '0 0 20px #00fff7',
+            marginBottom: '1.5rem',
+            textShadow: '0 0 30px #00fff7, 0 0 60px rgba(0, 255, 247, 0.4)',
             color: '#00fff7',
+            letterSpacing: '0.1em',
+            fontWeight: '900',
           }}>TAP RUSH</h1>
           <div style={{
             display: 'flex',
-            gap: '0.8rem',
+            gap: `clamp(0.5rem, ${scaleFactor * 0.8}rem, 1rem)`,
             width: '100%',
-            maxWidth: '400px',
-            marginBottom: '0.8rem',
+            marginBottom: `clamp(0.6rem, ${scaleFactor * 0.8}rem, 1rem)`,
+            marginLeft: 'auto',
+            marginRight: 'auto',
           }}>
             <button
               onClick={startGame}
               style={{
-                ...responsiveStyle,
-                fontSize: `clamp(1rem, ${scaleFactor * 1.5}rem, 1.8rem)`,
+                fontSize: `clamp(1.1rem, ${scaleFactor * 1.6}rem, 2rem)`,
                 fontFamily: "'Orbitron', sans-serif",
-                backgroundColor: '#ff004d',
+                background: 'linear-gradient(135deg, #ff004d 0%, #d90042 100%)',
                 color: '#fff',
-                border: '3px solid #ff004d',
-                borderRadius: '8px',
+                border: 'none',
+                borderRadius: '12px',
                 cursor: 'pointer',
-                boxShadow: '0 0 20px #ff004d',
-                transition: 'all 0.3s',
+                boxShadow: '0 4px 15px rgba(255, 0, 77, 0.4), inset 0 -2px 8px rgba(0, 0, 0, 0.2)',
+                transition: 'all 0.3s ease',
                 flex: '1',
+                padding: `clamp(0.7rem, ${scaleFactor * 1}rem, 1.2rem) clamp(1.5rem, ${scaleFactor * 2}rem, 3rem)`,
+                fontWeight: 'bold',
+                position: 'relative',
+                overflow: 'hidden',
               }}
-              onMouseOver={(e) => e.currentTarget.style.transform = 'scale(1.05)'}
-              onMouseOut={(e) => e.currentTarget.style.transform = 'scale(1)'}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = 'scale(1.05) translateY(-2px)';
+                e.currentTarget.style.boxShadow = '0 6px 25px rgba(255, 0, 77, 0.6), inset 0 -2px 8px rgba(0, 0, 0, 0.2)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'scale(1) translateY(0)';
+                e.currentTarget.style.boxShadow = '0 4px 15px rgba(255, 0, 77, 0.4), inset 0 -2px 8px rgba(0, 0, 0, 0.2)';
+              }}
             >
               START
             </button>
             <button
               onClick={() => setShowModeSelect(!showModeSelect)}
               style={{
-                ...responsiveStyle,
-                fontSize: `clamp(0.8rem, ${scaleFactor * 1}rem, 1.2rem)`,
+                fontSize: `clamp(1rem, ${scaleFactor * 1.3}rem, 1.6rem)`,
                 fontFamily: "'Orbitron', sans-serif",
-                backgroundColor: GAME_MODES[gameMode].color,
-                color: gameMode === 'zen' ? '#0d0d0d' : '#fff',
-                border: `3px solid ${GAME_MODES[gameMode].color}`,
-                borderRadius: '8px',
+                background: `linear-gradient(135deg, ${GAME_MODES[gameMode].color} 0%, ${GAME_MODES[gameMode].color}dd 100%)`,
+                color: gameMode === 'zen' || gameMode === 'classic' ? '#000' : '#fff',
+                border: 'none',
+                borderRadius: '12px',
                 cursor: 'pointer',
-                boxShadow: `0 0 15px ${GAME_MODES[gameMode].color}`,
-                transition: 'all 0.3s',
-                minWidth: '100px',
+                boxShadow: `0 4px 15px rgba(0, 255, 247, 0.3), inset 0 -2px 8px rgba(0, 0, 0, 0.2)`,
+                transition: 'all 0.3s ease',
+                minWidth: `clamp(80px, ${scaleFactor * 110}px, 130px)`,
+                padding: `clamp(0.7rem, ${scaleFactor * 1}rem, 1.2rem) clamp(1rem, ${scaleFactor * 1.2}rem, 1.5rem)`,
+                fontWeight: 'bold',
               }}
-              onMouseOver={(e) => e.currentTarget.style.transform = 'scale(1.05)'}
-              onMouseOut={(e) => e.currentTarget.style.transform = 'scale(1)'}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = 'scale(1.05) translateY(-2px)';
+                e.currentTarget.style.boxShadow = `0 6px 25px ${GAME_MODES[gameMode].color}66, inset 0 -2px 8px rgba(0, 0, 0, 0.2)`;
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'scale(1) translateY(0)';
+                e.currentTarget.style.boxShadow = `0 4px 15px ${GAME_MODES[gameMode].color}44, inset 0 -2px 8px rgba(0, 0, 0, 0.2)`;
+              }}
             >
               {GAME_MODES[gameMode].icon}
             </button>
@@ -803,25 +955,30 @@ export default function TapRush() {
           <button
             onClick={() => setShowDailyChallengeModal(true)}
             style={{
-              ...responsiveStyle,
-              fontSize: `clamp(0.9rem, ${scaleFactor * 1.2}rem, 1.4rem)`,
+              fontSize: `clamp(0.95rem, ${scaleFactor * 1.2}rem, 1.4rem)`,
               fontFamily: "'Orbitron', sans-serif",
-              backgroundColor: '#00fff7',
-              color: '#0d0d0d',
-              border: '3px solid #00fff7',
-              borderRadius: '8px',
+              background: 'linear-gradient(135deg, #00fff7 0%, #00d4cc 100%)',
+              color: '#000',
+              border: 'none',
+              borderRadius: '12px',
               cursor: 'pointer',
-              boxShadow: '0 0 20px #00fff7',
+              boxShadow: '0 4px 15px rgba(0, 255, 247, 0.4), inset 0 -2px 8px rgba(0, 0, 0, 0.1)',
               fontWeight: 'bold',
-              transition: 'all 0.3s',
-              marginTop: '1rem',
+              transition: 'all 0.3s ease',
+              marginTop: `clamp(0.6rem, ${scaleFactor * 0.8}rem, 1rem)`,
               width: '100%',
-              maxWidth: '400px',
+              padding: `clamp(0.65rem, ${scaleFactor * 0.9}rem, 1.1rem) clamp(1rem, ${scaleFactor * 1.5}rem, 2rem)`,
             }}
-            onMouseOver={(e) => e.currentTarget.style.transform = 'scale(1.05)'}
-            onMouseOut={(e) => e.currentTarget.style.transform = 'scale(1)'}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.transform = 'scale(1.05) translateY(-2px)';
+              e.currentTarget.style.boxShadow = '0 6px 25px rgba(0, 255, 247, 0.6), inset 0 -2px 8px rgba(0, 0, 0, 0.1)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = 'scale(1) translateY(0)';
+              e.currentTarget.style.boxShadow = '0 4px 15px rgba(0, 255, 247, 0.4), inset 0 -2px 8px rgba(0, 0, 0, 0.1)';
+            }}
           >
-            DAILY CHALLENGE
+            🏆 DAILY CHALLENGE
           </button>
           <button
             onClick={() => {
@@ -832,75 +989,102 @@ export default function TapRush() {
               });
             }}
             style={{
-              ...responsiveStyle,
-              fontSize: `clamp(0.8rem, ${scaleFactor * 1}rem, 1.2rem)`,
+              fontSize: `clamp(0.85rem, ${scaleFactor * 1.05}rem, 1.25rem)`,
               fontFamily: "'Orbitron', sans-serif",
-              backgroundColor: '#ff9500',
+              background: 'linear-gradient(135deg, #ff9500 0%, #ff7700 100%)',
               color: '#fff',
-              border: '2px solid #ffb84d',
-              borderRadius: '8px',
+              border: 'none',
+              borderRadius: '12px',
               cursor: 'pointer',
-              boxShadow: '0 0 15px rgba(255, 149, 0, 0.5)',
+              boxShadow: '0 4px 15px rgba(255, 149, 0, 0.4), inset 0 -2px 8px rgba(0, 0, 0, 0.2)',
               fontWeight: 'bold',
-              transition: 'all 0.3s',
-              marginTop: '1rem',
+              transition: 'all 0.3s ease',
+              marginTop: `clamp(0.6rem, ${scaleFactor * 0.8}rem, 1rem)`,
               width: '100%',
-              maxWidth: '400px',
+              padding: `clamp(0.6rem, ${scaleFactor * 0.85}rem, 1rem) clamp(1rem, ${scaleFactor * 1.5}rem, 2rem)`,
             }}
-            onMouseOver={(e) => e.currentTarget.style.transform = 'scale(1.05)'}
-            onMouseOut={(e) => e.currentTarget.style.transform = 'scale(1)'}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.transform = 'scale(1.05) translateY(-2px)';
+              e.currentTarget.style.boxShadow = '0 6px 25px rgba(255, 149, 0, 0.6), inset 0 -2px 8px rgba(0, 0, 0, 0.2)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = 'scale(1) translateY(0)';
+              e.currentTarget.style.boxShadow = '0 4px 15px rgba(255, 149, 0, 0.4), inset 0 -2px 8px rgba(0, 0, 0, 0.2)';
+            }}
           >
             🎬 2X SCORE POWER-UP
           </button>
           
-          <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem', justifyContent: 'center', flexWrap: 'wrap' }}>
+          <div style={{ 
+            display: 'flex', 
+            gap: `clamp(0.6rem, ${scaleFactor * 0.8}rem, 1rem)`, 
+            marginTop: `clamp(0.6rem, ${scaleFactor * 0.8}rem, 1rem)`, 
+            justifyContent: 'center', 
+            flexWrap: 'wrap' 
+          }}>
             <button
               onClick={() => setShowLeaderboard(true)}
               style={{
-                ...responsiveStyle,
-                fontSize: `clamp(0.8rem, ${scaleFactor * 1}rem, 1.2rem)`,
+                fontSize: `clamp(0.85rem, ${scaleFactor * 1.05}rem, 1.25rem)`,
                 fontFamily: "'Orbitron', sans-serif",
-                backgroundColor: '#f5f500',
-                color: '#0d0d0d',
-                border: '2px solid #f5f500',
-                borderRadius: '8px',
+                background: 'linear-gradient(135deg, #f5f500 0%, #d4d400 100%)',
+                color: '#000',
+                border: 'none',
+                borderRadius: '12px',
                 cursor: 'pointer',
+                boxShadow: '0 4px 15px rgba(245, 245, 0, 0.3), inset 0 -2px 8px rgba(0, 0, 0, 0.1)',
                 fontWeight: 'bold',
-                transition: 'all 0.3s',
+                transition: 'all 0.3s ease',
                 flex: '1 1 45%',
-                minWidth: '150px',
+                minWidth: `clamp(130px, ${scaleFactor * 150}px, 180px)`,
+                padding: `clamp(0.6rem, ${scaleFactor * 0.85}rem, 1rem) clamp(0.8rem, ${scaleFactor * 1}rem, 1.2rem)`,
               }}
-              onMouseOver={(e) => e.currentTarget.style.transform = 'scale(1.05)'}
-              onMouseOut={(e) => e.currentTarget.style.transform = 'scale(1)'}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = 'scale(1.05) translateY(-2px)';
+                e.currentTarget.style.boxShadow = '0 6px 25px rgba(245, 245, 0, 0.5), inset 0 -2px 8px rgba(0, 0, 0, 0.1)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'scale(1) translateY(0)';
+                e.currentTarget.style.boxShadow = '0 4px 15px rgba(245, 245, 0, 0.3), inset 0 -2px 8px rgba(0, 0, 0, 0.1)';
+              }}
             >
-              LEADERBOARD
+              📊 LEADERBOARD
             </button>
             <button
               onClick={() => setShowSkins(true)}
               style={{
-                ...responsiveStyle,
-                fontSize: `clamp(0.8rem, ${scaleFactor * 1}rem, 1.2rem)`,
+                fontSize: `clamp(0.85rem, ${scaleFactor * 1.05}rem, 1.25rem)`,
                 fontFamily: "'Orbitron', sans-serif",
-                backgroundColor: '#00ff85',
-                color: '#0d0d0d',
-                border: '2px solid #00ff85',
-                borderRadius: '8px',
+                background: 'linear-gradient(135deg, #00ff85 0%, #00d46b 100%)',
+                color: '#000',
+                border: 'none',
+                borderRadius: '12px',
                 cursor: 'pointer',
+                boxShadow: '0 4px 15px rgba(0, 255, 133, 0.3), inset 0 -2px 8px rgba(0, 0, 0, 0.1)',
                 fontWeight: 'bold',
-                transition: 'all 0.3s',
+                transition: 'all 0.3s ease',
                 flex: '1 1 45%',
-                minWidth: '150px',
+                minWidth: `clamp(130px, ${scaleFactor * 150}px, 180px)`,
+                padding: `clamp(0.6rem, ${scaleFactor * 0.85}rem, 1rem) clamp(0.8rem, ${scaleFactor * 1}rem, 1.2rem)`,
               }}
-              onMouseOver={(e) => e.currentTarget.style.transform = 'scale(1.05)'}
-              onMouseOut={(e) => e.currentTarget.style.transform = 'scale(1)'}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = 'scale(1.05) translateY(-2px)';
+                e.currentTarget.style.boxShadow = '0 6px 25px rgba(0, 255, 133, 0.5), inset 0 -2px 8px rgba(0, 0, 0, 0.1)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'scale(1) translateY(0)';
+                e.currentTarget.style.boxShadow = '0 4px 15px rgba(0, 255, 133, 0.3), inset 0 -2px 8px rgba(0, 0, 0, 0.1)';
+              }}
             >
-              SKINS
+              🎨 SKINS
             </button>
           </div>
           <p style={{ 
-            marginTop: '2rem', 
-            fontSize: `clamp(0.9rem, ${scaleFactor * 1.2}rem, 1.5rem)`,
-            color: '#00ff85' 
+            marginTop: `clamp(1.2rem, ${scaleFactor * 1.5}rem, 2rem)`, 
+            fontSize: `clamp(1rem, ${scaleFactor * 1.3}rem, 1.6rem)`,
+            color: '#00ff85',
+            fontWeight: 'bold',
+            textShadow: '0 0 15px rgba(0, 255, 133, 0.5)',
           }}>
             High Score: {highScore}
           </p>
