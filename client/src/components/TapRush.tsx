@@ -5,6 +5,7 @@ import { soundManager } from '@/lib/soundManager';
 import DailyChallengeModal from './DailyChallengeModal';
 import LeaderboardModal from './LeaderboardModal';
 import SkinsModal from './SkinsModal';
+import SettingsModal from './SettingsModal';
 import PauseOverlay from './PauseOverlay';
 import RuleBanner from './RuleBanner';
 import { getActiveSkin, type ColorScheme, type Skin } from '@/lib/skinSystem';
@@ -77,6 +78,7 @@ export default function TapRush() {
   const [activeChallenge, setActiveChallenge] = useState<DailyChallenge | null>(null);
   const [showLeaderboard, setShowLeaderboard] = useState(false);
   const [showSkins, setShowSkins] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const [activeSkin, setActiveSkin] = useState<Skin>(getActiveSkin());
   const [scaleFactor, setScaleFactor] = useState(getScaleFactor());
   const [doubleScoreActive, setDoubleScoreActive] = useState(false);
@@ -1138,6 +1140,34 @@ export default function TapRush() {
             >
               🎨 SKINS
             </button>
+            <button
+              onClick={() => setShowSettings(true)}
+              style={{
+                fontSize: `clamp(0.85rem, ${scaleFactor * 1.05}rem, 1.25rem)`,
+                fontFamily: "'Orbitron', sans-serif",
+                background: 'linear-gradient(135deg, #00fff7 0%, #00d4cc 100%)',
+                color: '#000',
+                border: 'none',
+                borderRadius: '12px',
+                cursor: 'pointer',
+                boxShadow: '0 4px 15px rgba(0, 255, 247, 0.3), inset 0 -2px 8px rgba(0, 0, 0, 0.1)',
+                fontWeight: 'bold',
+                transition: 'all 0.3s ease',
+                flex: '1 1 45%',
+                minWidth: `clamp(130px, ${scaleFactor * 150}px, 180px)`,
+                padding: `clamp(0.6rem, ${scaleFactor * 0.85}rem, 1rem) clamp(0.8rem, ${scaleFactor * 1}rem, 1.2rem)`,
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = 'scale(1.05) translateY(-2px)';
+                e.currentTarget.style.boxShadow = '0 6px 25px rgba(0, 255, 247, 0.5), inset 0 -2px 8px rgba(0, 0, 0, 0.1)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'scale(1) translateY(0)';
+                e.currentTarget.style.boxShadow = '0 4px 15px rgba(0, 255, 247, 0.3), inset 0 -2px 8px rgba(0, 0, 0, 0.1)';
+              }}
+            >
+              ⚙️ SETTINGS
+            </button>
           </div>
           <p style={{ 
             marginTop: `clamp(1.2rem, ${scaleFactor * 1.5}rem, 2rem)`, 
@@ -1172,6 +1202,16 @@ export default function TapRush() {
         isOpen={showSkins}
         onClose={() => setShowSkins(false)}
         onSkinChange={(skin) => setActiveSkin(skin)}
+      />
+      
+      <SettingsModal
+        isOpen={showSettings}
+        onClose={() => {
+          setShowSettings(false);
+          if (gameState === 'playing' && isPaused) {
+            resume();
+          }
+        }}
       />
       
       {gameState === 'playing' && currentRule && (
@@ -1263,35 +1303,68 @@ export default function TapRush() {
             </div>
           ))}
           
-          <button
-            onClick={pause}
-            style={{
-              position: 'absolute',
-              top: '10px',
-              right: '10px',
-              padding: `${scaleFactor * 0.8}rem ${scaleFactor * 1.2}rem`,
-              fontSize: `clamp(1.2rem, ${scaleFactor * 1.8}rem, 2.2rem)`,
-              fontFamily: "'Orbitron', sans-serif",
-              backgroundColor: 'rgba(255, 215, 0, 0.95)',
-              color: '#0d0d0d',
-              border: '3px solid #ffd700',
-              borderRadius: '12px',
-              cursor: 'pointer',
-              fontWeight: 'bold',
-              boxShadow: '0 0 20px rgba(255, 215, 0, 0.8)',
-              transition: 'all 0.2s',
-              zIndex: 10,
-              minWidth: `${scaleFactor * 50}px`,
-              minHeight: `${scaleFactor * 50}px`,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-            onMouseOver={(e) => e.currentTarget.style.transform = 'scale(1.08)'}
-            onMouseOut={(e) => e.currentTarget.style.transform = 'scale(1)'}
-          >
-            ⏸
-          </button>
+          <div style={{
+            position: 'absolute',
+            top: '10px',
+            right: '10px',
+            display: 'flex',
+            gap: '0.5rem',
+            zIndex: 10,
+          }}>
+            <button
+              onClick={() => {
+                pause();
+                setShowSettings(true);
+              }}
+              style={{
+                padding: `${scaleFactor * 0.7}rem ${scaleFactor * 1}rem`,
+                fontSize: `clamp(1rem, ${scaleFactor * 1.5}rem, 1.8rem)`,
+                fontFamily: "'Orbitron', sans-serif",
+                backgroundColor: 'rgba(0, 255, 247, 0.95)',
+                color: '#0d0d0d',
+                border: '3px solid #00fff7',
+                borderRadius: '12px',
+                cursor: 'pointer',
+                fontWeight: 'bold',
+                boxShadow: '0 0 20px rgba(0, 255, 247, 0.8)',
+                transition: 'all 0.2s',
+                minWidth: `${scaleFactor * 50}px`,
+                minHeight: `${scaleFactor * 50}px`,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+              onMouseOver={(e) => e.currentTarget.style.transform = 'scale(1.08)'}
+              onMouseOut={(e) => e.currentTarget.style.transform = 'scale(1)'}
+            >
+              ⚙️
+            </button>
+            <button
+              onClick={pause}
+              style={{
+                padding: `${scaleFactor * 0.8}rem ${scaleFactor * 1.2}rem`,
+                fontSize: `clamp(1.2rem, ${scaleFactor * 1.8}rem, 2.2rem)`,
+                fontFamily: "'Orbitron', sans-serif",
+                backgroundColor: 'rgba(255, 215, 0, 0.95)',
+                color: '#0d0d0d',
+                border: '3px solid #ffd700',
+                borderRadius: '12px',
+                cursor: 'pointer',
+                fontWeight: 'bold',
+                boxShadow: '0 0 20px rgba(255, 215, 0, 0.8)',
+                transition: 'all 0.2s',
+                minWidth: `${scaleFactor * 50}px`,
+                minHeight: `${scaleFactor * 50}px`,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+              onMouseOver={(e) => e.currentTarget.style.transform = 'scale(1.08)'}
+              onMouseOut={(e) => e.currentTarget.style.transform = 'scale(1)'}
+            >
+              ⏸
+            </button>
+          </div>
           
           <RuleBanner
             text={currentRule.text}
@@ -1447,6 +1520,28 @@ export default function TapRush() {
             onMouseOut={(e) => e.currentTarget.style.transform = 'scale(1)'}
           >
             VIEW LEADERBOARD
+          </button>
+          <button
+            onClick={() => setShowSettings(true)}
+            style={{
+              ...responsiveStyle,
+              fontSize: `clamp(0.8rem, ${scaleFactor * 1}rem, 1.2rem)`,
+              fontFamily: "'Orbitron', sans-serif",
+              backgroundColor: '#00fff7',
+              color: '#0d0d0d',
+              border: '2px solid #00fff7',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              fontWeight: 'bold',
+              transition: 'all 0.3s',
+              marginTop: '0.5rem',
+              width: '100%',
+              maxWidth: '300px',
+            }}
+            onMouseOver={(e) => e.currentTarget.style.transform = 'scale(1.05)'}
+            onMouseOut={(e) => e.currentTarget.style.transform = 'scale(1)'}
+          >
+            ⚙️ SETTINGS
           </button>
           
           <p style={{
