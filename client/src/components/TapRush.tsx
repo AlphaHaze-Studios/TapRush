@@ -5,8 +5,10 @@ import { soundManager } from '@/lib/soundManager';
 import DailyChallengeModal from './DailyChallengeModal';
 import LeaderboardModal from './LeaderboardModal';
 import SkinsModal from './SkinsModal';
+import PauseOverlay from './PauseOverlay';
 import { getActiveSkin, type ColorScheme } from '@/lib/skinSystem';
 import type { DailyChallenge } from '@/lib/dailyChallenges';
+import { usePause } from '@/hooks/usePause';
 
 type ShapeType = 'circle' | 'square' | 'triangle';
 type ColorType = 'red' | 'blue' | 'green' | 'yellow';
@@ -61,6 +63,8 @@ export default function TapRush() {
   const [showSkins, setShowSkins] = useState(false);
   const [colorScheme, setColorScheme] = useState<ColorScheme>(getActiveSkin().colors);
   
+  const { isPaused, showCountdown, countdownValue, pause, resume, unpause } = usePause();
+  
   const shapesRef = useRef<Shape[]>([]);
   const particlesRef = useRef<Particle[]>([]);
   const nextShapeId = useRef(0);
@@ -98,11 +102,15 @@ export default function TapRush() {
   }, []);
 
   const spawnShape = useCallback((canvas: HTMLCanvasElement, speedMultiplier: number = 1) => {
+    const dpr = window.devicePixelRatio || 1;
+    const displayWidth = canvas.width / dpr;
+    const displayHeight = canvas.height / dpr;
+    
     const shape: Shape = {
       id: nextShapeId.current++,
       type: SHAPE_TYPES[Math.floor(Math.random() * SHAPE_TYPES.length)],
       color: COLOR_TYPES[Math.floor(Math.random() * COLOR_TYPES.length)],
-      x: Math.random() * (canvas.width - 80) + 40,
+      x: Math.random() * (displayWidth - 80) + 40,
       y: -60,
       speed: (2 + Math.random() * 2) * speedMultiplier,
       size: 35 + Math.random() * 15,
@@ -163,14 +171,12 @@ export default function TapRush() {
   };
 
   const handleCanvasClick = useCallback((event: React.MouseEvent<HTMLCanvasElement>) => {
-    if (gameState !== 'playing' || !currentRule || !canvasRef.current) return;
+    if (gameState !== 'playing' || !currentRule || !canvasRef.current || isPaused || showCountdown) return;
 
     const canvas = canvasRef.current;
     const rect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
-    const clickX = (event.clientX - rect.left) * scaleX;
-    const clickY = (event.clientY - rect.top) * scaleY;
+    const clickX = event.clientX - rect.left;
+    const clickY = event.clientY - rect.top;
 
     let shapeClicked = false;
     
@@ -211,10 +217,12 @@ export default function TapRush() {
         break;
       }
     }
-  }, [gameState, currentRule, checkShapeMatch, frenzyMode, createParticles, score, highScore]);
+  }, [gameState, currentRule, checkShapeMatch, frenzyMode, createParticles, score, highScore, colorScheme, isPaused, showCountdown]);
 
   const startGame = useCallback(() => {
     soundManager.resume();
+    soundManager.unmute();
+    unpause();
     
     setGameState('playing');
     setScore(0);
@@ -227,12 +235,37 @@ export default function TapRush() {
     lastSpawnTime.current = Date.now();
     ruleChangeTimer.current = Date.now();
     setCurrentRule(generateRandomRule());
-  }, [generateRandomRule]);
+  }, [generateRandomRule, unpause]);
 
   const restartGame = useCallback(async () => {
     await showAd();
     startGame();
   }, [startGame]);
+  
+  const handlePauseResume = useCallback(() => {
+    resume();
+  }, [resume]);
+  
+  const handlePauseRestart = useCallback(async () => {
+    unpause();
+    await showAd();
+    startGame();
+  }, [unpause, startGame]);
+  
+  const handlePauseExit = useCallback(() => {
+    unpause();
+    setGameState('menu');
+    shapesRef.current = [];
+    particlesRef.current = [];
+  }, [unpause]);
+  
+  useEffect(() => {
+    if (isPaused) {
+      soundManager.mute();
+    } else {
+      soundManager.unmute();
+    }
+  }, [isPaused]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -242,8 +275,17 @@ export default function TapRush() {
     if (!ctx) return;
 
     const resizeCanvas = () => {
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
+      const dpr = window.devicePixelRatio || 1;
+      const displayWidth = window.innerWidth;
+      const displayHeight = window.innerHeight;
+      
+      canvas.width = displayWidth * dpr;
+      canvas.height = displayHeight * dpr;
+      canvas.style.width = `${displayWidth}px`;
+      canvas.style.height = `${displayHeight}px`;
+      
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.scale(dpr, dpr);
     };
     
     resizeCanvas();
@@ -254,10 +296,14 @@ export default function TapRush() {
       const deltaTime = (now - lastFrameTime.current) / 1000;
       lastFrameTime.current = now;
 
-      ctx.fillStyle = '#0d0d0d';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      const dpr = window.devicePixelRatio || 1;
+      const displayWidth = canvas.width / dpr;
+      const displayHeight = canvas.height / dpr;
 
-      if (gameState === 'playing') {
+      ctx.fillStyle = '#0d0d0d';
+      ctx.fillRect(0, 0, displayWidth, displayHeight);
+
+      if (gameState === 'playing' && !isPaused && !showCountdown) {
         const spawnRate = frenzyMode ? 800 : 1200;
         if (now - lastSpawnTime.current > spawnRate) {
           const speedMultiplier = frenzyMode ? 1.3 : 1;
@@ -269,7 +315,7 @@ export default function TapRush() {
           setCurrentRule(generateRandomRule());
           ruleChangeTimer.current = now;
           
-          soundManager.play('whoosh', 0.3);
+          soundManager.play('whoosh', 0.2);
         }
 
         if (frenzyMode) {
@@ -288,7 +334,7 @@ export default function TapRush() {
           const shape = shapesRef.current[i];
           shape.y += shape.speed;
           
-          if (shape.y > canvas.height + 100) {
+          if (shape.y > displayHeight + 100) {
             shapesRef.current.splice(i, 1);
           } else {
             drawShape(ctx, shape);
@@ -310,6 +356,17 @@ export default function TapRush() {
             ctx.globalAlpha = 1;
           }
         }
+      } else if (gameState === 'playing') {
+        for (const shape of shapesRef.current) {
+          drawShape(ctx, shape);
+        }
+        
+        for (const particle of particlesRef.current) {
+          ctx.fillStyle = particle.color;
+          ctx.globalAlpha = particle.life;
+          ctx.fillRect(particle.x - 3, particle.y - 3, 6, 6);
+          ctx.globalAlpha = 1;
+        }
       }
 
       animationFrameRef.current = requestAnimationFrame(gameLoop);
@@ -323,7 +380,7 @@ export default function TapRush() {
         cancelAnimationFrame(animationFrameRef.current);
       }
     };
-  }, [gameState, spawnShape, generateRandomRule, frenzyMode]);
+  }, [gameState, spawnShape, generateRandomRule, frenzyMode, isPaused, showCountdown]);
 
   return (
     <div style={{ width: '100vw', height: '100vh', position: 'relative', overflow: 'hidden' }}>
@@ -481,9 +538,34 @@ export default function TapRush() {
             </div>
           </div>
           
+          <button
+            onClick={pause}
+            style={{
+              position: 'absolute',
+              top: '20px',
+              right: '20px',
+              padding: '0.75rem 1.5rem',
+              fontSize: '1.2rem',
+              fontFamily: "'Orbitron', sans-serif",
+              backgroundColor: 'rgba(255, 215, 0, 0.9)',
+              color: '#0d0d0d',
+              border: '2px solid #ffd700',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              fontWeight: 'bold',
+              boxShadow: '0 0 15px rgba(255, 215, 0, 0.6)',
+              transition: 'all 0.2s',
+              zIndex: 10,
+            }}
+            onMouseOver={(e) => e.currentTarget.style.transform = 'scale(1.1)'}
+            onMouseOut={(e) => e.currentTarget.style.transform = 'scale(1)'}
+          >
+            ⏸ PAUSE
+          </button>
+          
           <div style={{
             position: 'absolute',
-            top: '20px',
+            top: '90px',
             right: '20px',
             color: '#fff',
             fontFamily: "'Orbitron', sans-serif",
@@ -510,6 +592,32 @@ export default function TapRush() {
             )}
           </div>
         </>
+      )}
+      
+      {isPaused && gameState === 'playing' && (
+        <PauseOverlay
+          onResume={handlePauseResume}
+          onRestart={handlePauseRestart}
+          onExit={handlePauseExit}
+        />
+      )}
+      
+      {showCountdown && gameState === 'playing' && (
+        <div style={{
+          position: 'absolute',
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          fontSize: '8rem',
+          fontFamily: "'Orbitron', sans-serif",
+          color: '#00fff7',
+          textShadow: '0 0 40px #00fff7',
+          fontWeight: 'bold',
+          animation: 'pulse 0.5s ease-in-out',
+          zIndex: 100,
+        }}>
+          {countdownValue > 0 ? countdownValue : 'GO!'}
+        </div>
       )}
       
       {gameState === 'gameover' && (

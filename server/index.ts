@@ -6,6 +6,12 @@ const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
+// Set development mode explicitly if not in production
+if (!process.env.NODE_ENV) {
+  app.set("env", "development");
+  console.log("Running in development mode");
+}
+
 app.use((req, res, next) => {
   const start = Date.now();
   const path = req.path;
@@ -59,11 +65,24 @@ app.use((req, res, next) => {
   // ALWAYS serve the app on port 5000
   // this serves both the API and the client
   const port = 5000;
-  server.listen({
-    port,
-    host: "0.0.0.0",
-    reusePort: true,
-  }, () => {
+  server.listen(port, "0.0.0.0", () => {
+    const env = app.get("env");
     log(`serving on port ${port}`);
+    log(`environment: ${env}`);
+    if (env === "development") {
+      log(`Local: http://localhost:${port}`);
+      log(`Network: http://0.0.0.0:${port}`);
+    }
+  });
+
+  // Handle server errors
+  server.on('error', (error: NodeJS.ErrnoException) => {
+    if (error.code === 'EADDRINUSE') {
+      console.error(`❌ Port ${port} is already in use. Please close other applications using this port.`);
+      process.exit(1);
+    } else {
+      console.error('❌ Server error:', error);
+      process.exit(1);
+    }
   });
 })();

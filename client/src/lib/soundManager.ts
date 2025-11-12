@@ -2,11 +2,12 @@ class SoundManager {
   private audioContext: AudioContext | null = null;
   private buffers: Map<string, AudioBuffer> = new Map();
   private sounds = {
-    pop: '/sounds/success.mp3',
-    buzz: '/sounds/hit.mp3',
-    whoosh: '/sounds/success.mp3',
+    pop: '/sounds/pop.wav',
+    buzz: '/sounds/buzz.wav',
+    whoosh: '/sounds/whoosh.wav',
   };
   private initialized = false;
+  private isMuted = false;
 
   async initialize() {
     if (this.initialized) return;
@@ -36,8 +37,7 @@ class SoundManager {
   }
 
   play(soundName: 'pop' | 'buzz' | 'whoosh', volume: number = 0.3) {
-    if (!this.audioContext || !this.initialized) {
-      console.warn('[Sound Manager] Audio not initialized, call initialize() first');
+    if (!this.audioContext || !this.initialized || this.isMuted) {
       return;
     }
 
@@ -65,6 +65,14 @@ class SoundManager {
     } catch (error) {
       console.error(`[Sound Manager] Error playing ${soundName}:`, error);
     }
+  }
+
+  mute() {
+    this.isMuted = true;
+  }
+
+  unmute() {
+    this.isMuted = false;
   }
 
   setMasterVolume(volume: number) {
