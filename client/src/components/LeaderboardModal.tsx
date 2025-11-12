@@ -21,6 +21,7 @@ export default function LeaderboardModal({ isOpen, onClose, currentScore, curren
   const [playerName, setPlayerName] = useState('');
   const [showNameInput, setShowNameInput] = useState(false);
   const [scoreSubmitted, setScoreSubmitted] = useState(false);
+  const [showConfirmClear, setShowConfirmClear] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -78,6 +79,12 @@ export default function LeaderboardModal({ isOpen, onClose, currentScore, curren
     loadLeaderboard();
     setShowNameInput(false);
     setPlayerName('');
+  };
+
+  const clearLeaderboard = () => {
+    setLocalStorage('leaderboard', []);
+    setLeaderboard([]);
+    setShowConfirmClear(false);
   };
 
   if (!isOpen) return null;
@@ -251,26 +258,119 @@ export default function LeaderboardModal({ isOpen, onClose, currentScore, curren
           )}
         </div>
 
-        <button
-          onClick={onClose}
-          style={{
-            width: '100%',
-            marginTop: '1.5rem',
-            padding: '0.8rem',
-            fontSize: '1rem',
-            fontFamily: "'Orbitron', sans-serif",
-            backgroundColor: '#444',
-            color: '#fff',
-            border: '2px solid #666',
-            borderRadius: '8px',
-            cursor: 'pointer',
-            transition: 'all 0.3s',
-          }}
-          onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#555'}
-          onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#444'}
-        >
-          CLOSE
-        </button>
+        <div style={{ display: 'flex', gap: '0.8rem', marginTop: '1.5rem', flexWrap: 'wrap' }}>
+          {leaderboard.length > 0 && !showConfirmClear && (
+            <button
+              onClick={() => setShowConfirmClear(true)}
+              style={{
+                flex: '1',
+                padding: '0.8rem',
+                fontSize: '0.9rem',
+                fontFamily: "'Orbitron', sans-serif",
+                backgroundColor: '#ff004d',
+                color: '#fff',
+                border: '2px solid #ff004d',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                transition: 'all 0.3s',
+                fontWeight: 'bold',
+              }}
+              onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#cc0040'}
+              onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#ff004d'}
+            >
+              CLEAR ALL
+            </button>
+          )}
+          
+          <button
+            onClick={onClose}
+            style={{
+              flex: '1',
+              padding: '0.8rem',
+              fontSize: '1rem',
+              fontFamily: "'Orbitron', sans-serif",
+              backgroundColor: '#444',
+              color: '#fff',
+              border: '2px solid #666',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              transition: 'all 0.3s',
+            }}
+            onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#555'}
+            onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#444'}
+          >
+            CLOSE
+          </button>
+        </div>
+        
+        {showConfirmClear && (
+          <div style={{
+            position: 'absolute',
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            backgroundColor: '#1a1a1a',
+            border: '3px solid #ff004d',
+            borderRadius: '12px',
+            padding: '1.5rem',
+            boxShadow: '0 0 40px #ff004d',
+            maxWidth: '300px',
+            width: '90%',
+            zIndex: 10,
+          }}>
+            <div style={{
+              color: '#fff',
+              fontSize: '1.1rem',
+              marginBottom: '1rem',
+              textAlign: 'center',
+            }}>
+              Clear all leaderboard scores?
+            </div>
+            <div style={{
+              color: '#ff004d',
+              fontSize: '0.9rem',
+              marginBottom: '1.5rem',
+              textAlign: 'center',
+            }}>
+              This cannot be undone!
+            </div>
+            <div style={{ display: 'flex', gap: '0.8rem' }}>
+              <button
+                onClick={() => setShowConfirmClear(false)}
+                style={{
+                  flex: '1',
+                  padding: '0.6rem',
+                  fontSize: '0.9rem',
+                  fontFamily: "'Orbitron', sans-serif",
+                  backgroundColor: '#444',
+                  color: '#fff',
+                  border: '2px solid #666',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                }}
+              >
+                CANCEL
+              </button>
+              <button
+                onClick={clearLeaderboard}
+                style={{
+                  flex: '1',
+                  padding: '0.6rem',
+                  fontSize: '0.9rem',
+                  fontFamily: "'Orbitron', sans-serif",
+                  backgroundColor: '#ff004d',
+                  color: '#fff',
+                  border: '2px solid #ff004d',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontWeight: 'bold',
+                }}
+              >
+                YES, CLEAR
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

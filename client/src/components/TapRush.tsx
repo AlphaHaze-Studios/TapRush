@@ -6,10 +6,12 @@ import DailyChallengeModal from './DailyChallengeModal';
 import LeaderboardModal from './LeaderboardModal';
 import SkinsModal from './SkinsModal';
 import PauseOverlay from './PauseOverlay';
+import RuleBanner from './RuleBanner';
 import { getActiveSkin, type ColorScheme, type Skin } from '@/lib/skinSystem';
 import type { DailyChallenge } from '@/lib/dailyChallenges';
 import { usePause } from '@/hooks/usePause';
 import { type ObjectType, type ColorType, getRandomObjectType, getObjectConfig, SHAPE_TYPES, FRUIT_TYPES, EMOJI_TYPES, type ObjectCategory } from '@/lib/objectTypes';
+import { type GameMode, getGameModeConfig, GAME_MODES } from '@/lib/gameModes';
 
 interface Shape {
   id: number;
@@ -79,18 +81,32 @@ export default function TapRush() {
   const [scaleFactor, setScaleFactor] = useState(getScaleFactor());
   const [doubleScoreActive, setDoubleScoreActive] = useState(false);
   const [doubleScoreTimer, setDoubleScoreTimer] = useState(0);
+  const [gameMode, setGameMode] = useState<GameMode>('classic');
+  const [showModeSelect, setShowModeSelect] = useState(false);
   
   const { isPaused, showCountdown, countdownValue, pause, resume, unpause } = usePause();
   
   const shapesRef = useRef<Shape[]>([]);
   const particlesRef = useRef<Particle[]>([]);
   const clickEffectsRef = useRef<ClickEffect[]>([]);
+  const shapePoolSize = useRef(0);
+  const particlePoolSize = useRef(0);
+  const effectPoolSize = useRef(0);
+  
+  const scoreRef = useRef(0);
+  const comboRef = useRef(0);
+  const frenzyModeRef = useRef(false);
+  const frenzyTimerRef = useRef(0);
+  const doubleScoreActiveRef = useRef(false);
+  const doubleScoreTimerRef = useRef(0);
+  
   const nextShapeId = useRef(0);
   const lastSpawnTime = useRef(0);
   const ruleChangeTimer = useRef(0);
   const animationFrameRef = useRef<number>();
   const lastFrameTime = useRef(Date.now());
   const gameStartTime = useRef(0);
+  const lastStateSync = useRef(Date.now());
   const rafScheduled = useRef(false);
 
   useEffect(() => {
@@ -139,21 +155,22 @@ export default function TapRush() {
   }, []);
 
   const getProgressiveDifficulty = useCallback(() => {
+    const modeConfig = getGameModeConfig(gameMode);
     const elapsed = (Date.now() - gameStartTime.current) / 1000;
     const progress = Math.min(elapsed / 120, 1);
     
-    const baseSpawnRate = 1400;
-    const minSpawnRate = 450;
+    const baseSpawnRate = 1400 * modeConfig.spawnRateMultiplier;
+    const minSpawnRate = 450 * modeConfig.spawnRateMultiplier;
     const spawnRate = baseSpawnRate - (baseSpawnRate - minSpawnRate) * progress;
     
-    const baseSpeed = 2;
-    const maxSpeed = 5;
+    const baseSpeed = 2 * modeConfig.speedMultiplier;
+    const maxSpeed = 5 * modeConfig.speedMultiplier;
     const speedMultiplier = baseSpeed + (maxSpeed - baseSpeed) * progress;
     
     const maxShapes = Math.floor(6 + progress * 10);
     
     return { spawnRate, speedMultiplier, maxShapes };
-  }, []);
+  }, [gameMode]);
 
   const spawnShape = useCallback((canvas: HTMLCanvasElement, speedMultiplier: number = 1) => {
     const dpr = window.devicePixelRatio || 1;
@@ -163,7 +180,7 @@ export default function TapRush() {
     const baseSize = 40 * scaleFactor;
     const objectType = getRandomObjectType();
     
-    const shape: Shape = {
+    const newShape = {
       id: nextShapeId.current++,
       type: objectType,
       color: COLOR_TYPES[Math.floor(Math.random() * COLOR_TYPES.length)],
@@ -173,34 +190,67 @@ export default function TapRush() {
       size: baseSize + Math.random() * (baseSize * 0.4),
       rotation: 0,
     };
-    shapesRef.current.push(shape);
+    
+    if (shapePoolSize.current < shapesRef.current.length) {
+      Object.assign(shapesRef.current[shapePoolSize.current], newShape);
+    } else {
+      shapesRef.current.push(newShape);
+    }
+    shapePoolSize.current++;
   }, [scaleFactor]);
 
   const createParticles = useCallback((x: number, y: number, color: string) => {
-    const particleCount = 20;
+    const maxParticles = 200;
+    const particleCount = 15;
+    
     for (let i = 0; i < particleCount; i++) {
+      if (particlePoolSize.current >= maxParticles) break;
+      
       const angle = (Math.PI * 2 * i) / particleCount;
       const speed = 2 + Math.random() * 4;
-      particlesRef.current.push({
-        x,
-        y,
-        vx: Math.cos(angle) * speed,
-        vy: Math.sin(angle) * speed,
-        life: 1,
-        color,
-        size: 2 + Math.random() * 3,
-      });
+      
+      if (particlePoolSize.current < particlesRef.current.length) {
+        const particle = particlesRef.current[particlePoolSize.current];
+        particle.x = x;
+        particle.y = y;
+        particle.vx = Math.cos(angle) * speed;
+        particle.vy = Math.sin(angle) * speed;
+        particle.life = 1;
+        particle.color = color;
+        particle.size = 2 + Math.random() * 3;
+      } else {
+        particlesRef.current.push({
+          x,
+          y,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed,
+          life: 1,
+          color,
+          size: 2 + Math.random() * 3,
+        });
+      }
+      particlePoolSize.current++;
     }
   }, []);
 
   const createClickEffect = useCallback((x: number, y: number, color: string) => {
-    clickEffectsRef.current.push({
+    const maxEffects = 20;
+    if (effectPoolSize.current >= maxEffects) return;
+    
+    const newEffect = {
       x,
       y,
       life: 1,
       scale: 0.5,
       color,
-    });
+    };
+    
+    if (effectPoolSize.current < clickEffectsRef.current.length) {
+      Object.assign(clickEffectsRef.current[effectPoolSize.current], newEffect);
+    } else {
+      clickEffectsRef.current.push(newEffect);
+    }
+    effectPoolSize.current++;
   }, []);
 
   const checkShapeMatch = useCallback((shape: Shape, rule: Rule): boolean => {
@@ -295,7 +345,7 @@ export default function TapRush() {
 
     let shapeClicked = false;
     
-    for (let i = shapesRef.current.length - 1; i >= 0; i--) {
+    for (let i = shapePoolSize.current - 1; i >= 0; i--) {
       const shape = shapesRef.current[i];
       const distance = Math.sqrt(
         Math.pow(clickX - shape.x, 2) + Math.pow(clickY - shape.y, 2)
@@ -305,34 +355,51 @@ export default function TapRush() {
         shapeClicked = true;
         
         if (checkShapeMatch(shape, currentRule)) {
-          let points = frenzyMode ? 2 : 1;
-          if (doubleScoreActive) points *= 2;
-          setScore(prev => prev + points);
-          setCombo(prev => {
-            const newCombo = prev + 1;
-            setMaxCombo(max => Math.max(max, newCombo));
-            if (newCombo === 20) {
-              setFrenzyMode(true);
-              setFrenzyTimer(5);
-            }
-            return newCombo;
-          });
+          let points = frenzyModeRef.current ? 2 : 1;
+          if (doubleScoreActiveRef.current) points *= 2;
+          scoreRef.current += points;
+          comboRef.current++;
+          
+          setMaxCombo(max => Math.max(max, comboRef.current));
+          
+          const modeConfig = getGameModeConfig(gameMode);
+          if (comboRef.current === modeConfig.comboForFrenzy) {
+            frenzyModeRef.current = true;
+            frenzyTimerRef.current = modeConfig.frenzyDuration;
+          }
           
           createParticles(shape.x, shape.y, activeSkin.colors[shape.color]);
           createClickEffect(shape.x, shape.y, activeSkin.colors[shape.color]);
-          shapesRef.current.splice(i, 1);
+          
+          shapePoolSize.current--;
+          if (i < shapePoolSize.current) {
+            const temp = shapesRef.current[i];
+            shapesRef.current[i] = shapesRef.current[shapePoolSize.current];
+            shapesRef.current[shapePoolSize.current] = temp;
+          }
           
           const config = getObjectConfig(shape.type);
           soundManager.play(config.sound as any, 0.4);
           vibrate(15);
         } else {
+          const modeConfig = getGameModeConfig(gameMode);
           soundManager.play('buzz', 0.5);
           vibrate([30, 100, 30, 100, 30]);
           
-          setGameState('gameover');
-          if (score > highScore) {
-            setHighScore(score);
-            setLocalStorage('tapRushHighScore', score);
+          if (modeConfig.penaltyEnabled) {
+            setGameState('gameover');
+            if (scoreRef.current > highScore) {
+              setHighScore(scoreRef.current);
+              setLocalStorage('tapRushHighScore', scoreRef.current);
+            }
+          } else {
+            comboRef.current = 0;
+            shapePoolSize.current--;
+            if (i < shapePoolSize.current) {
+              const temp = shapesRef.current[i];
+              shapesRef.current[i] = shapesRef.current[shapePoolSize.current];
+              shapesRef.current[shapePoolSize.current] = temp;
+            }
           }
         }
         break;
@@ -345,21 +412,37 @@ export default function TapRush() {
     soundManager.unmute();
     unpause();
     
+    const modeConfig = getGameModeConfig(gameMode);
+    const isEndlessFrenzy = gameMode === 'frenzy';
+    
     setGameState('playing');
     setScore(0);
     setCombo(0);
     setMaxCombo(0);
-    setFrenzyMode(false);
-    setFrenzyTimer(0);
+    setFrenzyMode(isEndlessFrenzy);
+    setFrenzyTimer(isEndlessFrenzy ? 999 : 0);
+    
+    scoreRef.current = 0;
+    comboRef.current = 0;
+    frenzyModeRef.current = isEndlessFrenzy;
+    frenzyTimerRef.current = isEndlessFrenzy ? modeConfig.frenzyDuration : 0;
+    doubleScoreActiveRef.current = doubleScoreActive;
+    doubleScoreTimerRef.current = doubleScoreTimer;
+    
     shapesRef.current = [];
     particlesRef.current = [];
     clickEffectsRef.current = [];
+    shapePoolSize.current = 0;
+    particlePoolSize.current = 0;
+    effectPoolSize.current = 0;
+    
     nextShapeId.current = 0;
     lastSpawnTime.current = Date.now();
     ruleChangeTimer.current = Date.now();
     gameStartTime.current = Date.now();
+    lastStateSync.current = Date.now();
     setCurrentRule(generateRandomRule());
-  }, [generateRandomRule, unpause]);
+  }, [generateRandomRule, unpause, doubleScoreActive, doubleScoreTimer, gameMode]);
 
   const restartGame = useCallback(async () => {
     await showAd();
@@ -433,65 +516,76 @@ export default function TapRush() {
         const { spawnRate, speedMultiplier, maxShapes } = getProgressiveDifficulty();
         
         if (now - lastSpawnTime.current > (frenzyMode ? spawnRate * 0.6 : spawnRate) && 
-            shapesRef.current.length < maxShapes) {
+            shapePoolSize.current < maxShapes) {
           const adjustedSpeed = frenzyMode ? speedMultiplier * 1.3 : speedMultiplier;
           spawnShape(canvas, adjustedSpeed);
           lastSpawnTime.current = now;
         }
 
-        if (now - ruleChangeTimer.current > 10000) {
+        const modeConfig = getGameModeConfig(gameMode);
+        if (now - ruleChangeTimer.current > modeConfig.ruleChangeInterval) {
           setCurrentRule(generateRandomRule());
           ruleChangeTimer.current = now;
-          soundManager.play('whoosh', 0.2);
         }
 
-        if (frenzyMode) {
-          setFrenzyTimer(prev => {
-            const newTimer = prev - deltaTime;
-            if (newTimer <= 0) {
-              setFrenzyMode(false);
-              setCombo(0);
-              return 0;
-            }
-            return newTimer;
-          });
+        if (frenzyModeRef.current) {
+          frenzyTimerRef.current -= deltaTime;
+          if (frenzyTimerRef.current <= 0) {
+            frenzyModeRef.current = false;
+            frenzyTimerRef.current = 0;
+            comboRef.current = 0;
+          }
         }
 
-        if (doubleScoreActive) {
-          setDoubleScoreTimer(prev => {
-            const newTimer = prev - deltaTime;
-            if (newTimer <= 0) {
-              setDoubleScoreActive(false);
-              return 0;
-            }
-            return newTimer;
-          });
+        if (doubleScoreActiveRef.current) {
+          doubleScoreTimerRef.current -= deltaTime;
+          if (doubleScoreTimerRef.current <= 0) {
+            doubleScoreActiveRef.current = false;
+            doubleScoreTimerRef.current = 0;
+          }
+        }
+        
+        if (now - lastStateSync.current > 50) {
+          setScore(scoreRef.current);
+          setCombo(comboRef.current);
+          setFrenzyMode(frenzyModeRef.current);
+          setFrenzyTimer(frenzyTimerRef.current);
+          setDoubleScoreActive(doubleScoreActiveRef.current);
+          setDoubleScoreTimer(doubleScoreTimerRef.current);
+          lastStateSync.current = now;
         }
 
-        for (let i = shapesRef.current.length - 1; i >= 0; i--) {
+        for (let i = 0; i < shapePoolSize.current; i++) {
           const shape = shapesRef.current[i];
           shape.y += shape.speed;
           
           if (shape.y > displayHeight + 100) {
-            shapesRef.current.splice(i, 1);
+            shapePoolSize.current--;
+            if (i < shapePoolSize.current) {
+              const temp = shapesRef.current[i];
+              shapesRef.current[i] = shapesRef.current[shapePoolSize.current];
+              shapesRef.current[shapePoolSize.current] = temp;
+              i--;
+            }
           } else {
             drawShape(ctx, shape);
           }
         }
 
-        // Cap particles at 200
-        if (particlesRef.current.length > 200) {
-          particlesRef.current = particlesRef.current.slice(-200);
-        }
-
-        for (let i = particlesRef.current.length - 1; i >= 0; i--) {
+        for (let i = 0; i < particlePoolSize.current; i++) {
           const particle = particlesRef.current[i];
           particle.x += particle.vx;
           particle.y += particle.vy;
           particle.life -= deltaTime * 2;
           
           if (particle.life <= 0) {
-            particlesRef.current.splice(i, 1);
+            particlePoolSize.current--;
+            if (i < particlePoolSize.current) {
+              const temp = particlesRef.current[i];
+              particlesRef.current[i] = particlesRef.current[particlePoolSize.current];
+              particlesRef.current[particlePoolSize.current] = temp;
+              i--;
+            }
           } else {
             ctx.fillStyle = particle.color;
             ctx.globalAlpha = particle.life;
@@ -501,13 +595,19 @@ export default function TapRush() {
         }
 
         // Click effects
-        for (let i = clickEffectsRef.current.length - 1; i >= 0; i--) {
+        for (let i = 0; i < effectPoolSize.current; i++) {
           const effect = clickEffectsRef.current[i];
           effect.life -= deltaTime * 2;
           effect.scale += deltaTime * 2;
           
           if (effect.life <= 0) {
-            clickEffectsRef.current.splice(i, 1);
+            effectPoolSize.current--;
+            if (i < effectPoolSize.current) {
+              const temp = clickEffectsRef.current[i];
+              clickEffectsRef.current[i] = clickEffectsRef.current[effectPoolSize.current];
+              clickEffectsRef.current[effectPoolSize.current] = temp;
+              i--;
+            }
           } else {
             ctx.strokeStyle = effect.color;
             ctx.lineWidth = 3 * scaleFactor;
@@ -519,11 +619,12 @@ export default function TapRush() {
           }
         }
       } else if (gameState === 'playing') {
-        for (const shape of shapesRef.current) {
-          drawShape(ctx, shape);
+        for (let i = 0; i < shapePoolSize.current; i++) {
+          drawShape(ctx, shapesRef.current[i]);
         }
         
-        for (const particle of particlesRef.current) {
+        for (let i = 0; i < particlePoolSize.current; i++) {
+          const particle = particlesRef.current[i];
           ctx.fillStyle = particle.color;
           ctx.globalAlpha = particle.life;
           ctx.fillRect(particle.x - particle.size / 2, particle.y - particle.size / 2, particle.size, particle.size);
@@ -593,27 +694,112 @@ export default function TapRush() {
             textShadow: '0 0 20px #00fff7',
             color: '#00fff7',
           }}>TAP RUSH</h1>
-          <button
-            onClick={startGame}
-            style={{
-              ...responsiveStyle,
-              fontSize: `clamp(1rem, ${scaleFactor * 1.5}rem, 1.8rem)`,
-              fontFamily: "'Orbitron', sans-serif",
-              backgroundColor: '#ff004d',
-              color: '#fff',
-              border: '3px solid #ff004d',
-              borderRadius: '8px',
-              cursor: 'pointer',
-              boxShadow: '0 0 20px #ff004d',
-              transition: 'all 0.3s',
+          <div style={{
+            display: 'flex',
+            gap: '0.8rem',
+            width: '100%',
+            maxWidth: '400px',
+            marginBottom: '0.8rem',
+          }}>
+            <button
+              onClick={startGame}
+              style={{
+                ...responsiveStyle,
+                fontSize: `clamp(1rem, ${scaleFactor * 1.5}rem, 1.8rem)`,
+                fontFamily: "'Orbitron', sans-serif",
+                backgroundColor: '#ff004d',
+                color: '#fff',
+                border: '3px solid #ff004d',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                boxShadow: '0 0 20px #ff004d',
+                transition: 'all 0.3s',
+                flex: '1',
+              }}
+              onMouseOver={(e) => e.currentTarget.style.transform = 'scale(1.05)'}
+              onMouseOut={(e) => e.currentTarget.style.transform = 'scale(1)'}
+            >
+              START
+            </button>
+            <button
+              onClick={() => setShowModeSelect(!showModeSelect)}
+              style={{
+                ...responsiveStyle,
+                fontSize: `clamp(0.8rem, ${scaleFactor * 1}rem, 1.2rem)`,
+                fontFamily: "'Orbitron', sans-serif",
+                backgroundColor: GAME_MODES[gameMode].color,
+                color: gameMode === 'zen' ? '#0d0d0d' : '#fff',
+                border: `3px solid ${GAME_MODES[gameMode].color}`,
+                borderRadius: '8px',
+                cursor: 'pointer',
+                boxShadow: `0 0 15px ${GAME_MODES[gameMode].color}`,
+                transition: 'all 0.3s',
+                minWidth: '100px',
+              }}
+              onMouseOver={(e) => e.currentTarget.style.transform = 'scale(1.05)'}
+              onMouseOut={(e) => e.currentTarget.style.transform = 'scale(1)'}
+            >
+              {GAME_MODES[gameMode].icon}
+            </button>
+          </div>
+          
+          {showModeSelect && (
+            <div style={{
               width: '100%',
               maxWidth: '400px',
-            }}
-            onMouseOver={(e) => e.currentTarget.style.transform = 'scale(1.05)'}
-            onMouseOut={(e) => e.currentTarget.style.transform = 'scale(1)'}
-          >
-            START GAME
-          </button>
+              backgroundColor: 'rgba(0, 0, 0, 0.8)',
+              border: '2px solid #00fff7',
+              borderRadius: '12px',
+              padding: '1rem',
+              marginBottom: '1rem',
+            }}>
+              <div style={{
+                color: '#00fff7',
+                fontSize: `clamp(0.9rem, ${scaleFactor * 1.1}rem, 1.3rem)`,
+                marginBottom: '0.8rem',
+                textAlign: 'center',
+                fontWeight: 'bold',
+              }}>
+                SELECT MODE
+              </div>
+              {(Object.keys(GAME_MODES) as GameMode[]).map((mode) => {
+                const config = GAME_MODES[mode];
+                const isSelected = gameMode === mode;
+                return (
+                  <button
+                    key={mode}
+                    onClick={() => {
+                      setGameMode(mode);
+                      setShowModeSelect(false);
+                    }}
+                    style={{
+                      width: '100%',
+                      padding: '0.8rem',
+                      marginBottom: '0.5rem',
+                      fontSize: `clamp(0.8rem, ${scaleFactor * 1}rem, 1.2rem)`,
+                      fontFamily: "'Orbitron', sans-serif",
+                      backgroundColor: isSelected ? config.color : 'rgba(0, 0, 0, 0.5)',
+                      color: isSelected && mode === 'zen' ? '#0d0d0d' : '#fff',
+                      border: `2px solid ${config.color}`,
+                      borderRadius: '8px',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s',
+                      textAlign: 'left',
+                    }}
+                    onMouseOver={(e) => e.currentTarget.style.backgroundColor = config.color}
+                    onMouseOut={(e) => e.currentTarget.style.backgroundColor = isSelected ? config.color : 'rgba(0, 0, 0, 0.5)'}
+                  >
+                    <div style={{ fontWeight: 'bold', marginBottom: '0.2rem' }}>
+                      {config.icon} {config.name}
+                    </div>
+                    <div style={{ fontSize: '0.7rem', opacity: 0.8 }}>
+                      {config.description}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
           <button
             onClick={() => setShowDailyChallengeModal(true)}
             style={{
@@ -803,37 +989,31 @@ export default function TapRush() {
             ⏸
           </button>
           
-          <div style={{
-            position: 'absolute',
-            top: '50%',
-            left: '50%',
-            transform: 'translate(-50%, -50%)',
-            color: '#fff',
-            fontFamily: "'Orbitron', sans-serif",
-            fontSize: `clamp(1.2rem, ${scaleFactor * 1.8}rem, 2.5rem)`,
-            textAlign: 'center',
-            padding: `${scaleFactor * 0.6}rem ${scaleFactor * 1.2}rem`,
-            backgroundColor: 'rgba(0, 0, 0, 0.5)',
-            borderRadius: '12px',
-            border: `3px solid ${frenzyMode ? '#ff004d' : '#00fff7'}`,
-            boxShadow: `0 0 25px ${frenzyMode ? '#ff004d' : '#00fff7'}`,
-            pointerEvents: 'none',
-            maxWidth: '85%',
-          }}>
-            <div style={{ textShadow: `0 0 15px ${frenzyMode ? '#ff004d' : '#00fff7'}`, fontWeight: 'bold' }}>
-              {currentRule.text}
+          <RuleBanner
+            text={currentRule.text}
+            frenzyMode={frenzyMode}
+            scaleFactor={scaleFactor}
+          />
+          
+          {frenzyMode && (
+            <div style={{
+              position: 'absolute',
+              top: 'calc(50% + 4rem)',
+              left: '50%',
+              transform: 'translateX(-50%)',
+              fontSize: `clamp(0.9rem, ${scaleFactor * 1.2}rem, 1.6rem)`,
+              color: '#ff004d',
+              textShadow: '0 0 15px #ff004d',
+              fontFamily: "'Orbitron', sans-serif",
+              fontWeight: 'bold',
+              backgroundColor: 'rgba(0, 0, 0, 0.5)',
+              padding: `${scaleFactor * 0.5}rem ${scaleFactor * 1}rem`,
+              borderRadius: '8px',
+              pointerEvents: 'none',
+            }}>
+              FRENZY! {frenzyTimer.toFixed(1)}s
             </div>
-            {frenzyMode && (
-              <div style={{
-                marginTop: '0.5rem',
-                fontSize: `clamp(0.9rem, ${scaleFactor * 1.2}rem, 1.6rem)`,
-                color: '#ff004d',
-                textShadow: '0 0 15px #ff004d',
-              }}>
-                FRENZY! {frenzyTimer.toFixed(1)}s
-              </div>
-            )}
-          </div>
+          )}
         </>
       )}
       
@@ -892,7 +1072,8 @@ export default function TapRush() {
             onClick={() => {
               showRewardedAd(() => {
                 setGameState('playing');
-                setCombo(Math.floor(combo / 2));
+                comboRef.current = Math.floor(comboRef.current / 2);
+                setCombo(comboRef.current);
                 soundManager.resume();
                 soundManager.play('whoosh', 0.3);
               });
