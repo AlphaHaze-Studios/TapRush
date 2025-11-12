@@ -1,11 +1,41 @@
-node_modules
-dist
+# Node modules
+node_modules/
+
+# Build outputs
+dist/
+build/
+
+# OS files
 .DS_Store
-server/public
+
+# Server public files (if they are generated)
+server/public/
+
+# Vite temporary files
 vite.config.ts.*
+
+# Archives
 *.tar.gz
-build
-android
-.local
+
+# Android build artifacts (but keep the platform folder itself if you want to commit Gradle configs)
+android/app/build/
+android/.gradle/
+android/.cxx/
+android/.idea/
+
+# Capacitor generated files (optional: you can keep android folder for CI builds)
+android/app/src/main/assets/public/
+android/app/src/main/res/mipmap-*/
+
+# Local settings
+.local/
 .replit
 replit
+.npmrc
+
+# Icon / Splash generated files (cordova-res output)
+resources/android/
+resources/ios/
+
+# Optional: logs
+*.log
