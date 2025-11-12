@@ -1,10 +1,21 @@
+export type SoundName = 'pop' | 'buzz' | 'whoosh' | 'crunch' | 'splash' | 'squish' | 'laugh' | 'cry' | 'grunt' | 'yeah' | 'kiss' | 'sparkle';
+
 class SoundManager {
   private audioContext: AudioContext | null = null;
   private buffers: Map<string, AudioBuffer> = new Map();
-  private sounds = {
+  private sounds: Record<SoundName, string> = {
     pop: '/sounds/pop.wav',
     buzz: '/sounds/buzz.wav',
     whoosh: '/sounds/whoosh.wav',
+    crunch: '/sounds/pop.wav',
+    splash: '/sounds/whoosh.wav',
+    squish: '/sounds/pop.wav',
+    laugh: '/sounds/pop.wav',
+    cry: '/sounds/buzz.wav',
+    grunt: '/sounds/buzz.wav',
+    yeah: '/sounds/whoosh.wav',
+    kiss: '/sounds/pop.wav',
+    sparkle: '/sounds/whoosh.wav',
   };
   private initialized = false;
   private isMuted = false;
@@ -36,12 +47,15 @@ class SoundManager {
     }
   }
 
-  play(soundName: 'pop' | 'buzz' | 'whoosh', volume: number = 0.3) {
+  play(soundName: SoundName, volume: number = 0.3) {
     if (!this.audioContext || !this.initialized || this.isMuted) {
       return;
     }
 
-    const buffer = this.buffers.get(soundName);
+    const soundPath = this.sounds[soundName];
+    const baseSoundName = soundPath.split('/').pop()?.replace('.wav', '') || soundName;
+    const buffer = this.buffers.get(baseSoundName);
+    
     if (!buffer) {
       console.warn(`[Sound Manager] Sound ${soundName} not loaded`);
       return;
